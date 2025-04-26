@@ -99,30 +99,10 @@ pub fn compile(self: *Compiler) !void {
             },
             .kw_syscall => try self.bytecode.emitOpcode(.syscall),
             .kw_hlt => try self.bytecode.emitOpcode(.hlt),
-            .kw_db => {
-                while (true) {
-                    switch (self.peek_token.kind) {
-                        .string => {
-                            const escaped = try self.escapeString(self.peek_token.literal, self.peek_token.loc, self.allocator);
-                            for (escaped) |c| {
-                                try self.bytecode.emitByte(c);
-                            }
-                        },
-                        .integer => {
-                            const byte = try std.fmt.parseInt(u8, self.peek_token.literal, 10);
-                            try self.bytecode.emitByte(byte);
-                        },
-                        else => {},
-                    }
-                    try self.nextToken();
-
-                    if (self.peek_token.kind == .comma) {
-                        try self.nextToken();
-                    } else {
-                        break;
-                    }
-                }
-            },
+            .kw_db => try self.compileData(.byte, u8),
+            .kw_dw => try self.compileData(.word, u16),
+            .kw_dd => try self.compileData(.dword, u32),
+            .kw_dq => try self.compileData(.qword, u64),
             else => {
                 try self.diag.err("unhandled token \"{s}\"", .{self.curr_token.literal}, self.curr_token.loc);
                 return error.UnhandledToken;
@@ -225,6 +205,52 @@ fn compileAddress(self: *Compiler) !void {
     try self.bytecode.emitQword(@bitCast(int));
 
     try self.expectPeek(.rbracket);
+}
+
+fn compileData(self: *Compiler, comptime size: DataType, comptime T: type) !void {
+    while (true) {
+        switch (self.peek_token.kind) {
+            .string => {
+                if (size != .byte) {
+                    try self.diag.err(
+                        "strings can only be used with db",
+                        .{},
+                        self.peek_token.loc,
+                    );
+                    return error.InvalidDataType;
+                }
+                const escaped = try self.escapeString(self.peek_token.literal, self.peek_token.loc, self.allocator);
+                for (escaped) |c| {
+                    try self.bytecode.emitByte(c);
+                }
+            },
+            .integer => {
+                const value = try std.fmt.parseInt(T, self.peek_token.literal, 10);
+                switch (size) {
+                    .byte => try self.bytecode.emitByte(@intCast(value)),
+                    .word => try self.bytecode.emitWord(@intCast(value)),
+                    .dword => try self.bytecode.emitDword(@intCast(value)),
+                    .qword => try self.bytecode.emitQword(value),
+                }
+            },
+            else => {
+                const expected = if (size == .byte) "string or integer" else "integer";
+                try self.diag.err(
+                    "expected token to be {s} got \"{s}\" instead",
+                    .{ expected, @tagName(self.peek_token.kind) },
+                    self.peek_token.loc,
+                );
+                return error.UnexpectedToken;
+            },
+        }
+        try self.nextToken();
+
+        if (self.peek_token.kind == .comma) {
+            try self.nextToken();
+        } else {
+            break;
+        }
+    }
 }
 
 fn nextToken(self: *Compiler) !void {

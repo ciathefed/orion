@@ -23,6 +23,9 @@ pub const keywords = std.StaticStringMap(Token.Kind).initComptime(.{
     .{ "hlt", .kw_hlt },
 
     .{ "db", .kw_db },
+    .{ "dw", .kw_dw },
+    .{ "dd", .kw_dd },
+    .{ "dq", .kw_dq },
 });
 
 pub const registers = [_][]const u8{
