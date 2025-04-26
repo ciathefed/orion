@@ -6,7 +6,8 @@ pub const Opcode = enum(u8) {
     mov_reg_reg,
     ldr,
     str,
-    hlt,
+    syscall,
+    hlt = 0xFF,
 
     pub fn isValid(byte: u8) bool {
         inline for (std.meta.fields(Opcode)) |field| {

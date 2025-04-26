@@ -54,23 +54,29 @@ pub fn compile(self: *Compiler) !void {
                 const dst = try self.parseRegister();
                 try self.expectPeek(.comma);
                 switch (self.peek_token.kind) {
-                    .register => {
-                        const src = try self.parseRegister();
-                        try self.bytecode.emitOpcode(.mov_reg_reg);
-                        try self.bytecode.emitByte(dst);
-                        try self.bytecode.emitByte(src);
-                    },
                     .integer => {
                         const src = try self.parseInteger();
                         try self.bytecode.emitOpcode(.mov_reg_imm);
                         try self.bytecode.emitByte(dst);
                         try self.bytecode.emitQword(src);
                     },
-                    .float => unreachable,
+                    .register => {
+                        const src = try self.parseRegister();
+                        try self.bytecode.emitOpcode(.mov_reg_reg);
+                        try self.bytecode.emitByte(dst);
+                        try self.bytecode.emitByte(src);
+                    },
+                    .ident => {
+                        try self.nextToken();
+                        try self.bytecode.emitOpcode(.mov_reg_imm);
+                        try self.bytecode.emitByte(dst);
+                        try self.fixups.put(self.bytecode.len(), self.curr_token.literal);
+                        try self.bytecode.emitQword(0);
+                    },
                     else => {
                         try self.diag.err(
-                            "expected token to be \"{s}\" or \"{s}\" got \"{s}\" instead",
-                            .{ @tagName(.register), @tagName(.integer), @tagName(self.peek_token.kind) },
+                            "expected token to be \"{s}\", \"{s}\", or \"{s}\" got \"{s}\" instead",
+                            .{ @tagName(.integer), @tagName(.register), @tagName(.ident), @tagName(self.peek_token.kind) },
                             self.peek_token.loc,
                         );
                         return error.UnexpectedToken;
@@ -91,6 +97,7 @@ pub fn compile(self: *Compiler) !void {
                 try self.expectPeek(.comma);
                 try self.compileAddress();
             },
+            .kw_syscall => try self.bytecode.emitOpcode(.syscall),
             .kw_hlt => try self.bytecode.emitOpcode(.hlt),
             .kw_db => {
                 while (true) {

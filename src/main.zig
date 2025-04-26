@@ -33,7 +33,7 @@ pub fn main() !void {
     const bytecode = try compiler.bytecode.toOwnedSlice();
 
     // try std.fs.cwd().writeFile(.{
-    //     .sub_path = "app.bin",
+    //     .sub_path = "app.ob",
     //     .data = bytecode,
     // });
 

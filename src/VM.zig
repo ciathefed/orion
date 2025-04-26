@@ -2,6 +2,8 @@ const std = @import("std");
 const Register = @import("common.zig").Register;
 const Opcode = @import("common.zig").Opcode;
 const DataType = @import("common.zig").DataType;
+const SyscallFn = @import("syscalls.zig").SyscallFn;
+const getAllSyscalls = @import("syscalls.zig").getAllSyscalls;
 const Diag = @import("Diag.zig");
 
 const VM = @This();
@@ -54,6 +56,7 @@ pub const Registers = struct {
 
 mem: []u8,
 regs: Registers,
+syscalls: std.ArrayList(SyscallFn),
 halted: bool,
 diag: Diag,
 allocator: std.mem.Allocator,
@@ -68,6 +71,7 @@ pub fn init(program: []u8, mem_size: usize, allocator: std.mem.Allocator) !VM {
     return .{
         .mem = mem,
         .regs = regs,
+        .syscalls = try getAllSyscalls(allocator),
         .halted = false,
         .diag = .init(allocator),
         .allocator = allocator,
@@ -76,6 +80,7 @@ pub fn init(program: []u8, mem_size: usize, allocator: std.mem.Allocator) !VM {
 
 pub fn deinit(self: *VM) void {
     self.allocator.free(self.mem);
+    self.syscalls.deinit();
     self.diag.deinit();
 }
 
@@ -156,6 +161,16 @@ pub fn step(self: *VM) !void {
                     std.mem.writeInt(u64, @ptrCast(slice), value, .little);
                 },
             }
+        },
+        .syscall => {
+            self.advance(1);
+            const index = self.regs.get(.x7, usize);
+            if (index >= self.syscalls.items.len) {
+                try self.diag.err("unknown syscall \"{d}\"", .{index}, null);
+                return error.UnknownOpcode;
+            }
+            const syscall = self.syscalls.items[index];
+            try syscall(self);
         },
         .hlt => self.halted = true,
         // else => {
