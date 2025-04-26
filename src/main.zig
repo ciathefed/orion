@@ -9,14 +9,23 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
+    var args = try std.process.argsWithAllocator(gpa.allocator());
+    defer args.deinit();
+
+    const program = args.next().?;
+    const file_path = blk: {
+        if (args.next()) |v| break :blk v;
+        std.debug.print("Usage: {s} <input.oasm>\n", .{program});
+        std.process.exit(1);
+    };
+
     var arean = std.heap.ArenaAllocator.init(gpa.allocator());
     defer arean.deinit();
     const allocator = arean.allocator();
 
-    const file_name = "test.oasm";
-    const input = try utils.readFile(file_name, allocator);
+    const input = try utils.readFile(file_path, allocator);
 
-    var lexer = Lexer.init(file_name, input, allocator);
+    var lexer = Lexer.init(file_path, input, allocator);
     var compiler = Compiler.init(&lexer, allocator) catch |err| switch (err) {
         error.LexerError => {
             try lexer.diag.printAllOrError(err);
@@ -31,11 +40,6 @@ pub fn main() !void {
     };
 
     const bytecode = try compiler.bytecode.toOwnedSlice();
-
-    // try std.fs.cwd().writeFile(.{
-    //     .sub_path = "app.ob",
-    //     .data = bytecode,
-    // });
 
     var vm = try VM.init(bytecode, 1024, gpa.allocator());
     defer vm.deinit();
