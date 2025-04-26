@@ -8,11 +8,6 @@ const DataType = @import("common.zig").DataType;
 const Diag = @import("Diag.zig");
 const utils = @import("utils.zig");
 
-pub const Address = struct {
-    addr: usize,
-    offset: usize,
-};
-
 pub const Registers = struct {
     x0: u64 = 0,
     x1: u64 = 0,
@@ -74,9 +69,12 @@ pub const VM = struct {
         var mem = try allocator.alloc(u8, mem_size);
         @memcpy(mem[0..program.len], program[0..]);
 
+        var regs = Registers.init();
+        regs.set(.sp, mem.len);
+
         return .{
             .mem = mem,
-            .regs = .init(),
+            .regs = regs,
             .halted = false,
             .diag = .init(allocator),
             .allocator = allocator,
@@ -92,8 +90,8 @@ pub const VM = struct {
         const ip = self.regs.get(.ip, usize);
         const inst = self.mem[ip];
         if (!Opcode.isValid(inst)) {
-            try self.diag.err("unknown opcode \"{X:02}\"", .{inst}, null);
-            return error.UnknownOpcode;
+            try self.diag.err("invalid opcode \"{d}\"", .{inst}, null);
+            return error.InvalidOpcode;
         }
         const opcode: Opcode = @enumFromInt(inst);
 
@@ -115,33 +113,62 @@ pub const VM = struct {
                 self.advance(1);
                 const dt = try self.readDataType();
                 const dst = try self.readRegister();
-                const addr = try self.readAddress();
-                const ptr = addr.addr + addr.offset;
+                const src = try self.readAddress();
+
+                const addr = src.addr +% src.offset;
 
                 switch (dt) {
                     .byte => {
-                        const byte = try self.readByteFrom(ptr);
+                        const byte = try self.readByteFrom(addr);
                         self.regs.set(dst, byte);
                     },
                     .word => {
-                        const word = try self.readWordFrom(ptr);
+                        const word = try self.readWordFrom(addr);
                         self.regs.set(dst, word);
                     },
                     .dword => {
-                        const dword = try self.readDwordFrom(ptr);
+                        const dword = try self.readDwordFrom(addr);
                         self.regs.set(dst, dword);
                     },
                     .qword => {
-                        const qword = try self.readQwordFrom(ptr);
+                        const qword = try self.readQwordFrom(addr);
                         self.regs.set(dst, qword);
                     },
                 }
             },
-            .hlt => self.halted = true,
-            else => {
-                try self.diag.err("unknown opcode \"{X:02}\"", .{inst}, null);
-                return error.UnknownOpcode;
+            .str => {
+                self.advance(1);
+                const dt = try self.readDataType();
+                const src = try self.readRegister();
+                const dst = try self.readAddress();
+
+                const addr = dst.addr +% dst.offset;
+                const value = self.regs.get(src, u64);
+
+                switch (dt) {
+                    .byte => {
+                        const slice = self.mem[addr .. addr + @sizeOf(u8)];
+                        std.mem.writeInt(u8, @ptrCast(slice), @intCast(value), .little);
+                    },
+                    .word => {
+                        const slice = self.mem[addr .. addr + @sizeOf(u16)];
+                        std.mem.writeInt(u16, @ptrCast(slice), @intCast(value), .little);
+                    },
+                    .dword => {
+                        const slice = self.mem[addr .. addr + @sizeOf(u32)];
+                        std.mem.writeInt(u32, @ptrCast(slice), @intCast(value), .little);
+                    },
+                    .qword => {
+                        const slice = self.mem[addr .. addr + @sizeOf(u64)];
+                        std.mem.writeInt(u64, @ptrCast(slice), value, .little);
+                    },
+                }
             },
+            .hlt => self.halted = true,
+            // else => {
+            //     try self.diag.err("unhandled opcode \"{d}\"", .{inst}, null);
+            //     return error.UnhandledOpcode;
+            // },
         }
     }
 
@@ -205,8 +232,7 @@ pub const VM = struct {
     }
 
     fn readByte(self: *VM) !u8 {
-        const ip = self.regs.get(.ip, usize);
-        const qword = try self.readByteFrom(ip);
+        const qword = try self.readByteFrom(self.regs.get(.ip, usize));
         self.advance(@sizeOf(u8));
         return qword;
     }
@@ -219,8 +245,7 @@ pub const VM = struct {
     }
 
     fn readWord(self: *VM) !u16 {
-        const ip = self.regs.get(.ip, usize);
-        const qword = try self.readWordFrom(ip);
+        const qword = try self.readWordFrom(self.regs.get(.ip, usize));
         self.advance(@sizeOf(u16));
         return qword;
     }
@@ -233,8 +258,7 @@ pub const VM = struct {
     }
 
     fn readDword(self: *VM) !u32 {
-        const ip = self.regs.get(.ip, usize);
-        const qword = try self.readDwordFrom(ip);
+        const qword = try self.readDwordFrom(self.regs.get(.ip, usize));
         self.advance(@sizeOf(u32));
         return qword;
     }
@@ -247,13 +271,12 @@ pub const VM = struct {
     }
 
     fn readQword(self: *VM) !u64 {
-        const ip = self.regs.get(.ip, usize);
-        const qword = try self.readQwordFrom(ip);
+        const qword = try self.readQwordFrom(self.regs.get(.ip, usize));
         self.advance(@sizeOf(u64));
         return qword;
     }
 
-    fn readAddress(self: *VM) !Address {
+    fn readAddress(self: *VM) !struct { addr: usize, offset: usize } {
         const addr: usize = @intCast(try self.readQword());
         const offset: usize = @intCast(try self.readQword());
         return .{ .addr = addr, .offset = offset };
@@ -297,6 +320,4 @@ pub fn main() !void {
     vm.run() catch |err| {
         try vm.diag.printAllOrError(err);
     };
-
-    std.debug.print("{any}\n", .{vm.regs});
 }

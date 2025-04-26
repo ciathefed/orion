@@ -84,6 +84,13 @@ pub fn compile(self: *Compiler) !void {
                 try self.expectPeek(.comma);
                 try self.compileAddress();
             },
+            .kw_str => {
+                try self.bytecode.emitOpcode(.str);
+                try self.compileDataType();
+                try self.compileRegister();
+                try self.expectPeek(.comma);
+                try self.compileAddress();
+            },
             .kw_hlt => try self.bytecode.emitOpcode(.hlt),
             .kw_db => {
                 while (true) {
@@ -116,6 +123,21 @@ pub fn compile(self: *Compiler) !void {
         }
 
         try self.nextToken();
+    }
+
+    var fixups_it = self.fixups.iterator();
+    while (fixups_it.next()) |fixup| {
+        if (self.labels.get(fixup.value_ptr.*)) |addr| {
+            var buf: [8]u8 = undefined;
+            std.mem.writeInt(u64, &buf, @intCast(addr), .little);
+            for (0..buf.len) |i| {
+                self.bytecode.buffer.items[fixup.key_ptr.* + i] = buf[i];
+            }
+        } else {
+            // TODO: add the loc to the fixup
+            try self.diag.err("undefined label \"{s}\"", .{fixup.value_ptr.*}, null);
+            return error.UndefinedLabel;
+        }
     }
 }
 
@@ -193,7 +215,7 @@ fn compileAddress(self: *Compiler) !void {
     try self.expectPeek(.integer);
 
     const int = try std.fmt.parseInt(i64, self.curr_token.literal, 10);
-    try self.bytecode.emitQword(@intCast(int));
+    try self.bytecode.emitQword(@bitCast(int));
 
     try self.expectPeek(.rbracket);
 }
