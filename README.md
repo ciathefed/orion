@@ -4,14 +4,20 @@
 
 ## Usage
 
-Build the program
+Build Orion
 
 ```shell
 zig build
 ```
 
-Run a program
+Compile an assembly program to bytecode
 
 ```shell
-./zig-out/bin/orion examples/hello.oasm
+./zig-out/bin/orion build examples/hello.oasm
+```
+
+Execute the bytecode in the virtual machine
+
+```shell
+./zig-out/bin/orion run app.ob
 ```

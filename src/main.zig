@@ -1,49 +1,84 @@
 const std = @import("std");
-const ascii = std.ascii;
-const Lexer = @import("Lexer.zig");
-const Compiler = @import("Compiler.zig");
-const VM = @import("VM.zig");
-const utils = @import("utils.zig");
+const args = @import("args");
+
+const build = @import("cli/build.zig");
+const run = @import("cli/run.zig");
+
+const Options = struct {
+    help: bool = false,
+
+    pub const shorthands = .{
+        .h = "help",
+    };
+
+    pub const meta = .{
+        .usage_summary = "[COMMAND]",
+        .option_docs = .{
+            .build = "Compile assembly to bytecode",
+            .run = "Execute bytecode in the virtual machine",
+            .help = "Print help and exit",
+        },
+    };
+};
+
+const Verb = union(enum) {
+    build: build.Options,
+    run: run.Options,
+    b: build.Options,
+    r: run.Options,
+};
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
     defer _ = gpa.deinit();
 
-    var args = try std.process.argsWithAllocator(gpa.allocator());
-    defer args.deinit();
+    const options = try args.parseWithVerbForCurrentProcess(Options, Verb, allocator, .print);
+    defer options.deinit();
 
-    const program = args.next().?;
-    const file_path = blk: {
-        if (args.next()) |v| break :blk v;
-        std.debug.print("Usage: {s} <input.oasm>\n", .{program});
-        std.process.exit(1);
+    const writer = std.io.getStdErr().writer();
+
+    handleCommand(allocator, options, writer) catch |err| {
+        switch (err) {
+            error.CommandError => std.process.exit(1),
+            else => return err,
+        }
     };
 
-    var arean = std.heap.ArenaAllocator.init(gpa.allocator());
-    defer arean.deinit();
-    const allocator = arean.allocator();
+    if ((!options.options.help and options.verb == null) or (options.options.help and options.verb == null)) {
+        try args.printHelp(Options, "orion", writer);
+        try writer.writeAll(
+            \\
+            \\Commands:
+            \\
+            \\  build        Compile assembly to bytecode
+            \\  run          Execute bytecode in the virtual machine
+            \\
+            \\ Pass --help to any command for more information, e.g. `orion build --help`
+            \\
+        );
+    }
+}
 
-    const input = try utils.readFile(file_path, allocator);
+fn handleCommand(allocator: std.mem.Allocator, options: args.ParseArgsResult(Options, Verb), writer: anytype) !void {
+    const OptionsType = args.ParseArgsResult(Options, Verb);
 
-    var lexer = Lexer.init(file_path, input, allocator);
-    var compiler = Compiler.init(&lexer, allocator) catch |err| switch (err) {
-        error.LexerError => {
-            try lexer.diag.printAllOrError(err);
-            std.process.exit(1);
-        },
-        else => return err,
-    };
-
-    compiler.compile() catch |err| {
-        try compiler.diag.printAllOrError(err);
-        std.process.exit(1);
-    };
-
-    const bytecode = try compiler.bytecode.toOwnedSlice();
-
-    var vm = try VM.init(bytecode, 1024, gpa.allocator());
-    defer vm.deinit();
-    vm.run() catch |err| {
-        try vm.diag.printAllOrError(err);
-    };
+    if (options.verb) |verb| {
+        return switch (verb) {
+            .build, .b => |opts| build.run(
+                allocator,
+                opts,
+                writer,
+                OptionsType,
+                options,
+            ),
+            .run, .r => |opts| run.run(
+                allocator,
+                opts,
+                writer,
+                OptionsType,
+                options,
+            ),
+        };
+    }
 }

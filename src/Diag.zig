@@ -78,8 +78,8 @@ pub fn warn(self: *Diag, comptime fmt: []const u8, args: anytype, loc: ?Location
 pub fn printAll(self: *Diag, writer: anytype) !void {
     for (self.messages.items) |msg| {
         const kind = switch (msg.kind) {
-            .err => "ERROR",
-            .warn => "WARN",
+            .err => "error",
+            .warn => "warn",
         };
         if (msg.loc) |loc| {
             try writer.print("{s}: {s}: {s}\n", .{ loc, kind, msg.msg });

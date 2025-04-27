@@ -10,6 +10,11 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    exe_mod.addImport("args", b.dependency("args", .{
+        .target = target,
+        .optimize = optimize,
+    }).module("args"));
+
     const exe = b.addExecutable(.{
         .name = "orion",
         .root_module = exe_mod,
