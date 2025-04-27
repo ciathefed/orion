@@ -39,6 +39,8 @@ pub const keywords = std.StaticStringMap(Token.Kind).initComptime(.{
     .{ "jgt", .kw_jgt },
     .{ "jle", .kw_jle },
     .{ "jge", .kw_jge },
+    .{ "call", .kw_call },
+    .{ "ret", .kw_ret },
     .{ "syscall", .kw_syscall },
     .{ "hlt", .kw_hlt },
 

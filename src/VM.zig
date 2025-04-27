@@ -285,6 +285,31 @@ pub fn step(self: *VM) !void {
             const syscall = self.syscalls.items[index];
             try syscall(self);
         },
+        .call_imm => {
+            self.advance(1);
+            const target = try self.readQword();
+
+            const return_addr = self.regs.get(.ip, u64);
+            try self.push(return_addr, .qword);
+
+            self.regs.set(.ip, target);
+        },
+        .call_reg => {
+            self.advance(1);
+            const target = self.regs.get(try self.readRegister(), u64);
+
+            const return_addr = self.regs.get(.ip, u64);
+            try self.push(return_addr, .qword);
+
+            self.regs.set(.ip, target);
+        },
+        .ret => {
+            self.advance(1);
+
+            const return_addr = try self.pop(.qword);
+
+            self.regs.set(.ip, return_addr);
+        },
         .hlt => self.halted = true,
         // else => {
         //     try self.diag.err("unhandled opcode \"{d}\"", .{inst}, null);

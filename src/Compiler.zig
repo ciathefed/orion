@@ -252,6 +252,34 @@ pub fn compile(self: *Compiler) !void {
                     },
                 }
             },
+            .kw_call => {
+                switch (self.peek_token.kind) {
+                    .integer => {
+                        const src = try self.parseInteger();
+                        try self.bytecode.emitOpcode(.call_imm);
+                        try self.bytecode.emitQword(src);
+                    },
+                    .register => {
+                        const src = try self.parseRegister();
+                        try self.bytecode.emitOpcode(.call_reg);
+                        try self.bytecode.emitByte(src);
+                    },
+                    .ident => {
+                        try self.nextToken();
+                        try self.bytecode.emitOpcode(.call_imm);
+                        try self.fixups.append(.{
+                            .addr = self.bytecode.len(),
+                            .label = self.curr_token.literal,
+                            .loc = self.curr_token.loc,
+                        });
+                        try self.bytecode.emitQword(0);
+                    },
+                    else => {
+                        try self.expectedError(&.{ .integer, .register, .ident }, self.peek_token.kind, self.peek_token.loc);
+                    },
+                }
+            },
+            .kw_ret => try self.bytecode.emitOpcode(.ret),
             .kw_hlt => try self.bytecode.emitOpcode(.hlt),
             .kw_db => try self.compileData(.byte, u8),
             .kw_dw => try self.compileData(.word, u16),
