@@ -74,12 +74,7 @@ pub fn compile(self: *Compiler) !void {
                         try self.bytecode.emitQword(0);
                     },
                     else => {
-                        try self.diag.err(
-                            "expected token to be \"{s}\", \"{s}\", or \"{s}\" got \"{s}\" instead",
-                            .{ @tagName(.integer), @tagName(.register), @tagName(.ident), @tagName(self.peek_token.kind) },
-                            self.peek_token.loc,
-                        );
-                        return error.UnexpectedToken;
+                        try self.expectedError(&.{ .integer, .register, .ident }, self.peek_token.kind, self.peek_token.loc);
                     },
                 }
             },
@@ -96,6 +91,49 @@ pub fn compile(self: *Compiler) !void {
                 try self.compileRegister();
                 try self.expectPeek(.comma);
                 try self.compileAddress();
+            },
+            .kw_push => {
+                const dt = try self.parseDataType();
+                switch (self.peek_token.kind) {
+                    .integer => {
+                        const src = try self.parseInteger();
+                        try self.bytecode.emitOpcode(.push_imm);
+                        try self.bytecode.emitDataType(dt);
+                        try self.bytecode.emitQword(src);
+                    },
+                    .register => {
+                        const src = try self.parseRegister();
+                        try self.bytecode.emitOpcode(.push_reg);
+                        try self.bytecode.emitDataType(dt);
+                        try self.bytecode.emitByte(src);
+                    },
+                    .ident => {
+                        try self.nextToken();
+                        try self.bytecode.emitOpcode(.push_imm);
+                        try self.bytecode.emitDataType(dt);
+                        try self.fixups.put(self.bytecode.len(), self.curr_token.literal);
+                        try self.bytecode.emitQword(0);
+                    },
+                    // .lbracket => {},
+                    else => {
+                        try self.expectedError(&.{ .integer, .register, .ident }, self.peek_token.kind, self.peek_token.loc);
+                    },
+                }
+            },
+            .kw_pop => {
+                const dt = try self.parseDataType();
+                switch (self.peek_token.kind) {
+                    .register => {
+                        const src = try self.parseRegister();
+                        try self.bytecode.emitOpcode(.pop_reg);
+                        try self.bytecode.emitDataType(dt);
+                        try self.bytecode.emitByte(src);
+                    },
+                    // .lbracket => {},
+                    else => {
+                        try self.expectedError(&.{.register}, self.peek_token.kind, self.peek_token.loc);
+                    },
+                }
             },
             .kw_syscall => try self.bytecode.emitOpcode(.syscall),
             .kw_hlt => try self.bytecode.emitOpcode(.hlt),
@@ -128,6 +166,23 @@ pub fn compile(self: *Compiler) !void {
     }
 }
 
+fn parseDataType(self: *Compiler) !DataType {
+    return blk: {
+        if (self.peek_token.kind.isDataType()) {
+            try self.nextToken();
+            break :blk switch (self.curr_token.kind) {
+                .dt_byte => .byte,
+                .dt_word => .word,
+                .dt_dword => .dword,
+                .dt_qword => .qword,
+                else => unreachable,
+            };
+        } else {
+            break :blk .byte;
+        }
+    };
+}
+
 fn parseInteger(self: *Compiler) !u64 {
     const int = try std.fmt.parseInt(i64, self.peek_token.literal, 10);
     try self.nextToken();
@@ -146,21 +201,7 @@ fn parseRegister(self: *Compiler) !u8 {
 }
 
 fn compileDataType(self: *Compiler) !void {
-    const dt: DataType = blk: {
-        if (self.peek_token.kind.isDataType()) {
-            try self.nextToken();
-            break :blk switch (self.curr_token.kind) {
-                .dt_byte => .byte,
-                .dt_word => .word,
-                .dt_dword => .dword,
-                .dt_qword => .qword,
-                else => unreachable,
-            };
-        } else {
-            break :blk .byte;
-        }
-    };
-    try self.bytecode.emitDataType(dt);
+    try self.bytecode.emitDataType(try self.parseDataType());
 }
 
 fn compileRegister(self: *Compiler) !void {
@@ -180,11 +221,7 @@ fn compileAddress(self: *Compiler) !void {
             try self.bytecode.emitQword(@intCast(int));
         },
         else => {
-            try self.diag.err(
-                "expected token to be \"{s}\" or \"{s}\" got \"{s}\" instead",
-                .{ @tagName(.ident), @tagName(.integer), @tagName(self.peek_token.kind) },
-                self.peek_token.loc,
-            );
+            try self.expectedError(&.{ .ident, .integer }, self.peek_token.kind, self.peek_token.loc);
         },
     }
     try self.nextToken();
@@ -234,13 +271,11 @@ fn compileData(self: *Compiler, comptime size: DataType, comptime T: type) !void
                 }
             },
             else => {
-                const expected = if (size == .byte) "string or integer" else "integer";
-                try self.diag.err(
-                    "expected token to be {s} got \"{s}\" instead",
-                    .{ expected, @tagName(self.peek_token.kind) },
-                    self.peek_token.loc,
-                );
-                return error.UnexpectedToken;
+                const expected = if (size == .byte)
+                    &.{ .string, .integer }
+                else
+                    &.{.integer};
+                try self.expectedError(expected, self.peek_token.kind, self.peek_token.loc);
             },
         }
         try self.nextToken();
@@ -256,20 +291,39 @@ fn compileData(self: *Compiler, comptime size: DataType, comptime T: type) !void
 fn nextToken(self: *Compiler) !void {
     self.curr_token = self.peek_token;
     self.peek_token = self.lexer.nextToken() catch return error.LexerError;
-    // std.debug.print("HERE: {any}\n", .{self.peek_token.kind});
 }
 
 fn expectPeek(self: *Compiler, kind: Token.Kind) !void {
     if (self.peek_token.kind == kind) {
         try self.nextToken();
     } else {
-        try self.diag.err(
-            "expected token to be \"{s}\" got \"{s}\" instead",
-            .{ @tagName(kind), @tagName(self.peek_token.kind) },
-            self.peek_token.loc,
-        );
-        return error.UnexpectedToken;
+        try self.expectedError(&.{kind}, self.peek_token.kind, self.peek_token.loc);
     }
+}
+
+fn expectedError(
+    self: *Compiler,
+    expected: []const Token.Kind,
+    got: Token.Kind,
+    loc: Diag.Location,
+) !void {
+    var buf: [1024]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&buf);
+    const writer = fbs.writer();
+
+    for (expected, 0..) |kind, i| {
+        if (i != 0) {
+            try writer.writeAll(if (i == expected.len - 1) ", or " else ", ");
+        }
+        try writer.print("\"{s}\"", .{@tagName(kind)});
+    }
+
+    try self.diag.err(
+        "expected token to be {s} got \"{s}\" instead",
+        .{ fbs.getWritten(), @tagName(got) },
+        loc,
+    );
+    return error.UnexpectedToken;
 }
 
 fn escapeString(self: *Compiler, string: []const u8, loc: Diag.Location, allocator: std.mem.Allocator) ![]u8 {

@@ -48,6 +48,8 @@ pub fn step(self: *VM) !void {
     }
     const opcode: Opcode = @enumFromInt(inst);
 
+    std.debug.print("{s}\n", .{@tagName(opcode)});
+
     switch (opcode) {
         .nop => self.advance(1),
         .mov_reg_imm => {
@@ -116,6 +118,28 @@ pub fn step(self: *VM) !void {
                     std.mem.writeInt(u64, @ptrCast(slice), value, .little);
                 },
             }
+        },
+        .push_imm => {
+            self.advance(1);
+            const dt = try self.readDataType();
+            const src = try self.readQword();
+
+            try self.push(src, dt);
+        },
+        .push_reg => {
+            self.advance(1);
+            const dt = try self.readDataType();
+            const src = self.regs.get(try self.readRegister(), u64);
+
+            try self.push(src, dt);
+        },
+        .pop_reg => {
+            self.advance(1);
+            const dt = try self.readDataType();
+            const dst = try self.readRegister();
+
+            const value = try self.pop(dt);
+            self.regs.set(dst, value);
         },
         .syscall => {
             self.advance(1);
@@ -243,4 +267,79 @@ fn readAddress(self: *VM) !struct { addr: usize, offset: usize } {
     const addr: usize = @intCast(try self.readQword());
     const offset: usize = @intCast(try self.readQword());
     return .{ .addr = addr, .offset = offset };
+}
+
+fn push(self: *VM, value: u64, dt: DataType) !void {
+    const sp = self.regs.get(.sp, usize);
+    const size: usize = switch (dt) {
+        .byte => @sizeOf(u8),
+        .word => @sizeOf(u16),
+        .dword => @sizeOf(u32),
+        .qword => @sizeOf(u64),
+    };
+
+    if (sp < size) {
+        try self.diag.err("stack overflow", .{}, null);
+        return error.StackOverflow;
+    }
+
+    const new_sp = sp - size;
+
+    switch (dt) {
+        .byte => {
+            const slice = self.mem[new_sp .. new_sp + @sizeOf(u8)];
+            std.mem.writeInt(u8, @ptrCast(slice), @truncate(value), .little);
+        },
+        .word => {
+            const slice = self.mem[new_sp .. new_sp + @sizeOf(u16)];
+            std.mem.writeInt(u16, @ptrCast(slice), @truncate(value), .little);
+        },
+        .dword => {
+            const slice = self.mem[new_sp .. new_sp + @sizeOf(u32)];
+            std.mem.writeInt(u32, @ptrCast(slice), @truncate(value), .little);
+        },
+        .qword => {
+            const slice = self.mem[new_sp .. new_sp + @sizeOf(u64)];
+            std.mem.writeInt(u64, @ptrCast(slice), value, .little);
+        },
+    }
+
+    self.regs.set(.sp, new_sp);
+}
+
+fn pop(self: *VM, dt: DataType) !u64 {
+    const sp = self.regs.get(.sp, usize);
+    const size: usize = switch (dt) {
+        .byte => @sizeOf(u8),
+        .word => @sizeOf(u16),
+        .dword => @sizeOf(u32),
+        .qword => @sizeOf(u64),
+    };
+
+    if (sp + size > self.mem.len) {
+        try self.diag.err("stack underflow", .{}, null);
+        return error.StackUnderflow;
+    }
+
+    const value: u64 = switch (dt) {
+        .byte => blk: {
+            const slice = self.mem[sp .. sp + @sizeOf(u8)];
+            break :blk std.mem.readInt(u8, @ptrCast(slice), .little);
+        },
+        .word => blk: {
+            const slice = self.mem[sp .. sp + @sizeOf(u16)];
+            break :blk std.mem.readInt(u16, @ptrCast(slice), .little);
+        },
+        .dword => blk: {
+            const slice = self.mem[sp .. sp + @sizeOf(u32)];
+            break :blk std.mem.readInt(u32, @ptrCast(slice), .little);
+        },
+        .qword => blk: {
+            const slice = self.mem[sp .. sp + @sizeOf(u64)];
+            break :blk std.mem.readInt(u64, @ptrCast(slice), .little);
+        },
+    };
+
+    self.regs.set(.sp, sp + size);
+    return value;
 }

@@ -23,6 +23,8 @@ pub const Kind = enum {
     kw_mov,
     kw_ldr,
     kw_str,
+    kw_push,
+    kw_pop,
     kw_syscall,
     kw_hlt,
 
