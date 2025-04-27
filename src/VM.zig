@@ -139,6 +139,26 @@ pub fn step(self: *VM) !void {
             const value = try self.pop(dt);
             self.regs.set(dst, value);
         },
+        .add_reg_reg_reg => try self.binaryOpReg(add),
+        .add_reg_reg_imm => try self.binaryOpImm(add),
+        .sub_reg_reg_reg => try self.binaryOpReg(sub),
+        .sub_reg_reg_imm => try self.binaryOpImm(sub),
+        .mul_reg_reg_reg => try self.binaryOpReg(mul),
+        .mul_reg_reg_imm => try self.binaryOpImm(mul),
+        .div_reg_reg_reg => try self.binaryOpReg(div),
+        .div_reg_reg_imm => try self.binaryOpImm(div),
+        .mod_reg_reg_reg => try self.binaryOpReg(mod),
+        .mod_reg_reg_imm => try self.binaryOpImm(mod),
+        .and_reg_reg_reg => try self.binaryOpReg(@"and"),
+        .and_reg_reg_imm => try self.binaryOpImm(@"and"),
+        .or_reg_reg_reg => try self.binaryOpReg(@"or"),
+        .or_reg_reg_imm => try self.binaryOpImm(@"or"),
+        .xor_reg_reg_reg => try self.binaryOpReg(xor),
+        .xor_reg_reg_imm => try self.binaryOpImm(xor),
+        .shl_reg_reg_reg => try self.binaryOpReg(shl),
+        .shl_reg_reg_imm => try self.binaryOpImm(shl),
+        .shr_reg_reg_reg => try self.binaryOpReg(shr),
+        .shr_reg_reg_imm => try self.binaryOpImm(shr),
         .syscall => {
             self.advance(1);
             const index = self.regs.get(.x7, usize);
@@ -166,6 +186,28 @@ pub fn run(self: *VM) !void {
 fn advance(self: *VM, n: usize) void {
     const ip = self.regs.get(.ip, usize);
     self.regs.set(.ip, ip + n);
+}
+
+fn binaryOpReg(
+    self: *VM,
+    comptime opFn: fn (lhs: u64, rhs: u64) u64,
+) !void {
+    self.advance(1);
+    const dst = try self.readRegister();
+    const lhs = self.regs.get(try self.readRegister(), u64);
+    const rhs = self.regs.get(try self.readRegister(), u64);
+    self.regs.set(dst, opFn(lhs, rhs));
+}
+
+fn binaryOpImm(
+    self: *VM,
+    comptime opFn: fn (lhs: u64, rhs: u64) u64,
+) !void {
+    self.advance(1);
+    const dst = try self.readRegister();
+    const lhs = self.regs.get(try self.readRegister(), u64);
+    const rhs = try self.readQword();
+    self.regs.set(dst, opFn(lhs, rhs));
 }
 
 fn readDataType(self: *VM) !DataType {
@@ -340,4 +382,44 @@ fn pop(self: *VM, dt: DataType) !u64 {
 
     self.regs.set(.sp, sp + size);
     return value;
+}
+
+fn add(lhs: u64, rhs: u64) u64 {
+    return lhs +% rhs;
+}
+
+fn sub(lhs: u64, rhs: u64) u64 {
+    return lhs -% rhs;
+}
+
+fn mul(lhs: u64, rhs: u64) u64 {
+    return lhs *% rhs;
+}
+
+fn div(lhs: u64, rhs: u64) u64 {
+    return @divTrunc(lhs, rhs);
+}
+
+fn mod(lhs: u64, rhs: u64) u64 {
+    return @mod(lhs, rhs);
+}
+
+fn @"and"(lhs: u64, rhs: u64) u64 {
+    return lhs & rhs;
+}
+
+fn @"or"(lhs: u64, rhs: u64) u64 {
+    return lhs | rhs;
+}
+
+fn xor(lhs: u64, rhs: u64) u64 {
+    return lhs ^ rhs;
+}
+
+fn shl(lhs: u64, rhs: u64) u64 {
+    return lhs << @intCast(rhs);
+}
+
+fn shr(lhs: u64, rhs: u64) u64 {
+    return lhs >> @intCast(rhs);
 }

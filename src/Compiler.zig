@@ -114,6 +114,7 @@ pub fn compile(self: *Compiler) !void {
                         try self.fixups.put(self.bytecode.len(), self.curr_token.literal);
                         try self.bytecode.emitQword(0);
                     },
+                    // TODO: add addressing
                     // .lbracket => {},
                     else => {
                         try self.expectedError(&.{ .integer, .register, .ident }, self.peek_token.kind, self.peek_token.loc);
@@ -129,12 +130,23 @@ pub fn compile(self: *Compiler) !void {
                         try self.bytecode.emitDataType(dt);
                         try self.bytecode.emitByte(src);
                     },
+                    // TODO: add addressing
                     // .lbracket => {},
                     else => {
                         try self.expectedError(&.{.register}, self.peek_token.kind, self.peek_token.loc);
                     },
                 }
             },
+            .kw_add => try self.compileBinaryOp(.add_reg_reg_reg, .add_reg_reg_imm),
+            .kw_sub => try self.compileBinaryOp(.sub_reg_reg_reg, .sub_reg_reg_imm),
+            .kw_mul => try self.compileBinaryOp(.mul_reg_reg_reg, .mul_reg_reg_imm),
+            .kw_div => try self.compileBinaryOp(.div_reg_reg_reg, .div_reg_reg_imm),
+            .kw_mod => try self.compileBinaryOp(.mod_reg_reg_reg, .mod_reg_reg_imm),
+            .kw_and => try self.compileBinaryOp(.and_reg_reg_reg, .and_reg_reg_imm),
+            .kw_or => try self.compileBinaryOp(.or_reg_reg_reg, .or_reg_reg_imm),
+            .kw_xor => try self.compileBinaryOp(.xor_reg_reg_reg, .xor_reg_reg_imm),
+            .kw_shl => try self.compileBinaryOp(.shl_reg_reg_reg, .shl_reg_reg_imm),
+            .kw_shr => try self.compileBinaryOp(.shr_reg_reg_reg, .shr_reg_reg_imm),
             .kw_syscall => try self.bytecode.emitOpcode(.syscall),
             .kw_hlt => try self.bytecode.emitOpcode(.hlt),
             .kw_db => try self.compileData(.byte, u8),
@@ -198,6 +210,45 @@ fn parseRegister(self: *Compiler) !u8 {
     }
     try self.diag.err("invalid register \"{s}\"", .{self.peek_token.literal}, self.peek_token.loc);
     return error.InvalidRegister;
+}
+
+fn compileBinaryOp(
+    self: *Compiler,
+    reg_reg_op: Opcode,
+    reg_imm_op: Opcode,
+) !void {
+    const dst = try self.parseRegister();
+    try self.expectPeek(.comma);
+    const lhs = try self.parseRegister();
+    try self.expectPeek(.comma);
+
+    switch (self.peek_token.kind) {
+        .integer => {
+            const rhs = try self.parseInteger();
+            try self.bytecode.emitOpcode(reg_imm_op);
+            try self.bytecode.emitByte(dst);
+            try self.bytecode.emitByte(lhs);
+            try self.bytecode.emitQword(rhs);
+        },
+        .register => {
+            const rhs = try self.parseRegister();
+            try self.bytecode.emitOpcode(reg_reg_op);
+            try self.bytecode.emitByte(dst);
+            try self.bytecode.emitByte(lhs);
+            try self.bytecode.emitByte(rhs);
+        },
+        .ident => {
+            try self.nextToken();
+            try self.bytecode.emitOpcode(reg_imm_op);
+            try self.bytecode.emitByte(dst);
+            try self.bytecode.emitByte(lhs);
+            try self.fixups.put(self.bytecode.len(), self.curr_token.literal);
+            try self.bytecode.emitQword(0);
+        },
+        else => {
+            try self.expectedError(&.{ .integer, .register, .ident }, self.peek_token.kind, self.peek_token.loc);
+        },
+    }
 }
 
 fn compileDataType(self: *Compiler) !void {

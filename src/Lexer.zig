@@ -21,6 +21,16 @@ pub const keywords = std.StaticStringMap(Token.Kind).initComptime(.{
     .{ "str", .kw_str },
     .{ "push", .kw_push },
     .{ "pop", .kw_pop },
+    .{ "add", .kw_add },
+    .{ "sub", .kw_sub },
+    .{ "mul", .kw_mul },
+    .{ "div", .kw_div },
+    .{ "mod", .kw_mod },
+    .{ "and", .kw_and },
+    .{ "or", .kw_or },
+    .{ "xor", .kw_xor },
+    .{ "shl", .kw_shl },
+    .{ "shr", .kw_shr },
     .{ "syscall", .kw_syscall },
     .{ "hlt", .kw_hlt },
 
@@ -190,7 +200,7 @@ fn skipWhitespace(self: *Lexer) void {
 }
 
 fn skipComment(self: *Lexer) void {
-    if (self.ch != '\n' and self.ch != 0) {
+    while (self.ch != '\n' and self.ch != 0) {
         self.readChar();
     }
     self.skipWhitespace();
