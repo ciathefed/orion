@@ -1,0 +1,25 @@
+_start:
+    mov x0, path
+    mov x1, 577
+    mov x2, 420
+    mov x7, 3
+    syscall
+
+    push x0
+
+    mov x1, message
+    mov x2, 14
+    mov x7, 2
+    syscall
+
+    pop x0
+    mov x7, 4
+    syscall
+
+    hlt
+
+path:
+    db "test.txt", 0
+
+message:
+    db "Hello, world!\n", 0

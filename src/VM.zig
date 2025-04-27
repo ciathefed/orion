@@ -48,8 +48,6 @@ pub fn step(self: *VM) !void {
     }
     const opcode: Opcode = @enumFromInt(inst);
 
-    std.debug.print("{s}\n", .{@tagName(opcode)});
-
     switch (opcode) {
         .nop => self.advance(1),
         .mov_reg_imm => {

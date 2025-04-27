@@ -16,17 +16,17 @@ ip: usize = 0,
 
 pub fn set(self: *Registers, reg: Register, val: anytype) void {
     switch (reg) {
-        .x0 => self.x0 = val,
-        .x1 => self.x1 = val,
-        .x2 => self.x2 = val,
-        .x3 => self.x3 = val,
-        .x4 => self.x4 = val,
-        .x5 => self.x5 = val,
-        .x6 => self.x6 = val,
-        .x7 => self.x7 = val,
-        .sp => self.sp = val,
-        .bp => self.bp = val,
-        .ip => self.ip = val,
+        .x0 => self.x0 = @intCast(val),
+        .x1 => self.x1 = @intCast(val),
+        .x2 => self.x2 = @intCast(val),
+        .x3 => self.x3 = @intCast(val),
+        .x4 => self.x4 = @intCast(val),
+        .x5 => self.x5 = @intCast(val),
+        .x6 => self.x6 = @intCast(val),
+        .x7 => self.x7 = @intCast(val),
+        .sp => self.sp = @intCast(val),
+        .bp => self.bp = @intCast(val),
+        .ip => self.ip = @intCast(val),
     }
 }
 

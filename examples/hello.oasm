@@ -2,7 +2,7 @@ _start:
     mov x0, 1
     mov x1, message
     mov x2, 14
-    mov x7, 0
+    mov x7, 2
     syscall
     hlt
 
