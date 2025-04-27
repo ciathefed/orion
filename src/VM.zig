@@ -445,8 +445,24 @@ fn readQword(self: *VM) !u64 {
 }
 
 fn readAddress(self: *VM) !struct { addr: usize, offset: usize } {
-    const addr: usize = @intCast(try self.readQword());
-    const offset: usize = @intCast(try self.readQword());
+    var kind = try self.readByte();
+    const addr: usize = switch (kind) {
+        0 => @intCast(try self.readQword()),
+        1 => self.regs.get(try self.readRegister(), usize),
+        else => {
+            try self.diag.err("invalid address type \"{d}\"", .{kind}, null);
+            return error.InvalidAddressOffsetType;
+        },
+    };
+    kind = try self.readByte();
+    const offset: usize = switch (kind) {
+        0 => @intCast(try self.readQword()),
+        1 => self.regs.get(try self.readRegister(), usize),
+        else => {
+            try self.diag.err("invalid offset type \"{d}\"", .{kind}, null);
+            return error.InvalidAddressOffsetType;
+        },
+    };
     return .{ .addr = addr, .offset = offset };
 }
 

@@ -397,27 +397,35 @@ fn compileAddress(self: *Compiler) !void {
     try self.expectPeek(.lbracket);
 
     switch (self.peek_token.kind) {
+        .integer => {
+            try self.bytecode.emitByte(0);
+            const int = try std.fmt.parseInt(i64, self.peek_token.literal, 10);
+            try self.bytecode.emitQword(@intCast(int));
+            try self.nextToken();
+        },
+        .register => {
+            try self.bytecode.emitByte(1);
+            try self.compileRegister();
+        },
         .ident => {
+            try self.bytecode.emitByte(0);
             try self.fixups.append(.{
                 .addr = self.bytecode.len(),
                 .label = self.peek_token.literal,
                 .loc = self.peek_token.loc,
             });
             try self.bytecode.emitQword(0);
-        },
-        .integer => {
-            const int = try std.fmt.parseInt(i64, self.peek_token.literal, 10);
-            try self.bytecode.emitQword(@intCast(int));
+            try self.nextToken();
         },
         else => {
-            try self.expectedError(&.{ .ident, .integer }, self.peek_token.kind, self.peek_token.loc);
+            try self.expectedError(&.{ .ident, .register, .integer }, self.peek_token.kind, self.peek_token.loc);
         },
     }
-    try self.nextToken();
 
     switch (self.peek_token.kind) {
         .comma => try self.nextToken(),
         .rbracket => {
+            try self.bytecode.emitByte(0);
             try self.bytecode.emitQword(0);
             try self.nextToken();
             return;
@@ -425,10 +433,31 @@ fn compileAddress(self: *Compiler) !void {
         else => {},
     }
 
-    try self.expectPeek(.integer);
-
-    const int = try std.fmt.parseInt(i64, self.curr_token.literal, 10);
-    try self.bytecode.emitQword(@bitCast(int));
+    switch (self.peek_token.kind) {
+        .integer => {
+            try self.bytecode.emitByte(0);
+            const int = try std.fmt.parseInt(i64, self.peek_token.literal, 10);
+            try self.bytecode.emitQword(@intCast(int));
+            try self.nextToken();
+        },
+        .register => {
+            try self.bytecode.emitByte(1);
+            try self.compileRegister();
+        },
+        .ident => {
+            try self.bytecode.emitByte(0);
+            try self.fixups.append(.{
+                .addr = self.bytecode.len(),
+                .label = self.peek_token.literal,
+                .loc = self.peek_token.loc,
+            });
+            try self.bytecode.emitQword(0);
+            try self.nextToken();
+        },
+        else => {
+            try self.expectedError(&.{ .ident, .register, .integer }, self.peek_token.kind, self.peek_token.loc);
+        },
+    }
 
     try self.expectPeek(.rbracket);
 }
