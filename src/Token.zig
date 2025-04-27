@@ -36,6 +36,13 @@ pub const Kind = enum {
     kw_shl,
     kw_shr,
     kw_cmp,
+    kw_jmp,
+    kw_jeq,
+    kw_jne,
+    kw_jlt,
+    kw_jgt,
+    kw_jle,
+    kw_jge,
     kw_syscall,
     kw_hlt,
 

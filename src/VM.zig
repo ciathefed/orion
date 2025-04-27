@@ -1,11 +1,11 @@
 const std = @import("std");
+const Diag = @import("Diag.zig");
 const Registers = @import("Registers.zig");
 const Register = @import("common.zig").Register;
 const Opcode = @import("common.zig").Opcode;
 const DataType = @import("common.zig").DataType;
 const SyscallFn = @import("syscalls.zig").SyscallFn;
 const getAllSyscalls = @import("syscalls.zig").getAllSyscalls;
-const Diag = @import("Diag.zig");
 
 const VM = @This();
 
@@ -172,6 +172,108 @@ pub fn step(self: *VM) !void {
             const rhs = self.regs.get(try self.readRegister(), u64);
             self.flags.eq = lhs == rhs;
             self.flags.lt = lhs < rhs;
+        },
+        // Add this to the switch statement in the step() function
+        .jmp_imm => {
+            self.advance(1);
+            const target = try self.readQword();
+            self.regs.set(.ip, target);
+        },
+        .jmp_reg => {
+            self.advance(1);
+            const reg = try self.readRegister();
+            const target = self.regs.get(reg, usize);
+            self.regs.set(.ip, target);
+        },
+        .jeq_imm => {
+            self.advance(1);
+            const target = try self.readQword();
+            if (self.flags.eq) {
+                self.regs.set(.ip, target);
+            }
+        },
+        .jeq_reg => {
+            self.advance(1);
+            const reg = try self.readRegister();
+            if (self.flags.eq) {
+                const target = self.regs.get(reg, usize);
+                self.regs.set(.ip, target);
+            }
+        },
+        .jne_imm => {
+            self.advance(1);
+            const target = try self.readQword();
+            if (!self.flags.eq) {
+                self.regs.set(.ip, target);
+            }
+        },
+        .jne_reg => {
+            self.advance(1);
+            const reg = try self.readRegister();
+            if (!self.flags.eq) {
+                const target = self.regs.get(reg, usize);
+                self.regs.set(.ip, target);
+            }
+        },
+        .jlt_imm => {
+            self.advance(1);
+            const target = try self.readQword();
+            if (self.flags.lt) {
+                self.regs.set(.ip, target);
+            }
+        },
+        .jlt_reg => {
+            self.advance(1);
+            const reg = try self.readRegister();
+            if (self.flags.lt) {
+                const target = self.regs.get(reg, usize);
+                self.regs.set(.ip, target);
+            }
+        },
+        .jgt_imm => {
+            self.advance(1);
+            const target = try self.readQword();
+            if (!self.flags.lt and !self.flags.eq) {
+                self.regs.set(.ip, target);
+            }
+        },
+        .jgt_reg => {
+            self.advance(1);
+            const reg = try self.readRegister();
+            if (!self.flags.lt and !self.flags.eq) {
+                const target = self.regs.get(reg, usize);
+                self.regs.set(.ip, target);
+            }
+        },
+        .jle_imm => {
+            self.advance(1);
+            const target = try self.readQword();
+            if (self.flags.lt or self.flags.eq) {
+                self.regs.set(.ip, target);
+            }
+        },
+        .jle_reg => {
+            self.advance(1);
+            const reg = try self.readRegister();
+            if (self.flags.lt or self.flags.eq) {
+                const target = self.regs.get(reg, usize);
+                self.regs.set(.ip, target);
+            }
+        },
+        .jge_imm => {
+            self.advance(1);
+            const target = try self.readQword();
+            if (!self.flags.lt) {
+                self.regs.set(.ip, target);
+            }
+        },
+        .jge_reg => {
+            self.advance(1);
+            const reg = try self.readRegister();
+            if (!self.flags.lt) {
+                const target = self.regs.get(reg, usize);
+                self.regs.set(.ip, target);
+            }
         },
         .syscall => {
             self.advance(1);

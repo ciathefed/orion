@@ -194,6 +194,64 @@ pub fn compile(self: *Compiler) !void {
                     },
                 }
             },
+            .kw_jmp, .kw_jeq, .kw_jne, .kw_jlt, .kw_jgt, .kw_jle, .kw_jge => {
+                const kind = self.curr_token.kind;
+                switch (self.peek_token.kind) {
+                    .integer => {
+                        const target = try self.parseInteger();
+                        const opcode: Opcode = switch (kind) {
+                            .kw_jmp => .jmp_imm,
+                            .kw_jeq => .jeq_imm,
+                            .kw_jne => .jne_imm,
+                            .kw_jlt => .jlt_imm,
+                            .kw_jgt => .jgt_imm,
+                            .kw_jle => .jle_imm,
+                            .kw_jge => .jge_imm,
+                            else => unreachable,
+                        };
+                        try self.bytecode.emitOpcode(opcode);
+                        try self.bytecode.emitQword(target);
+                    },
+                    .register => {
+                        const reg = try self.parseRegister();
+                        const opcode: Opcode = switch (kind) {
+                            .kw_jmp => .jmp_reg,
+                            .kw_jeq => .jeq_reg,
+                            .kw_jne => .jne_reg,
+                            .kw_jlt => .jlt_reg,
+                            .kw_jgt => .jgt_reg,
+                            .kw_jle => .jle_reg,
+                            .kw_jge => .jge_reg,
+                            else => unreachable,
+                        };
+                        try self.bytecode.emitOpcode(opcode);
+                        try self.bytecode.emitByte(reg);
+                    },
+                    .ident => {
+                        try self.nextToken();
+                        const opcode: Opcode = switch (kind) {
+                            .kw_jmp => .jmp_imm,
+                            .kw_jeq => .jeq_imm,
+                            .kw_jne => .jne_imm,
+                            .kw_jlt => .jlt_imm,
+                            .kw_jgt => .jgt_imm,
+                            .kw_jle => .jle_imm,
+                            .kw_jge => .jge_imm,
+                            else => unreachable,
+                        };
+                        try self.bytecode.emitOpcode(opcode);
+                        try self.fixups.append(.{
+                            .addr = self.bytecode.len(),
+                            .label = self.curr_token.literal,
+                            .loc = self.curr_token.loc,
+                        });
+                        try self.bytecode.emitQword(0);
+                    },
+                    else => {
+                        try self.expectedError(&.{ .integer, .register, .ident }, self.peek_token.kind, self.peek_token.loc);
+                    },
+                }
+            },
             .kw_hlt => try self.bytecode.emitOpcode(.hlt),
             .kw_db => try self.compileData(.byte, u8),
             .kw_dw => try self.compileData(.word, u16),
