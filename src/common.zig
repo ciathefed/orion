@@ -29,6 +29,8 @@ pub const Opcode = enum(u8) {
     shl_reg_reg_reg,
     shr_reg_reg_imm,
     shr_reg_reg_reg,
+    cmp_reg_imm,
+    cmp_reg_reg,
     ldr,
     str,
     syscall,

@@ -11,12 +11,18 @@ const utils = @import("utils.zig");
 
 const Compiler = @This();
 
+pub const Fixup = struct {
+    label: []const u8,
+    addr: usize,
+    loc: Diag.Location,
+};
+
 lexer: *Lexer,
 curr_token: Token,
 peek_token: Token,
 bytecode: Bytecode,
 labels: std.StringHashMap(usize),
-fixups: std.AutoHashMap(usize, []const u8),
+fixups: std.ArrayList(Fixup),
 diag: Diag,
 allocator: std.mem.Allocator,
 
@@ -70,7 +76,11 @@ pub fn compile(self: *Compiler) !void {
                         try self.nextToken();
                         try self.bytecode.emitOpcode(.mov_reg_imm);
                         try self.bytecode.emitByte(dst);
-                        try self.fixups.put(self.bytecode.len(), self.curr_token.literal);
+                        try self.fixups.append(.{
+                            .addr = self.bytecode.len(),
+                            .label = self.curr_token.literal,
+                            .loc = self.curr_token.loc,
+                        });
                         try self.bytecode.emitQword(0);
                     },
                     else => {
@@ -111,7 +121,11 @@ pub fn compile(self: *Compiler) !void {
                         try self.nextToken();
                         try self.bytecode.emitOpcode(.push_imm);
                         try self.bytecode.emitDataType(dt);
-                        try self.fixups.put(self.bytecode.len(), self.curr_token.literal);
+                        try self.fixups.append(.{
+                            .addr = self.bytecode.len(),
+                            .label = self.curr_token.literal,
+                            .loc = self.curr_token.loc,
+                        });
                         try self.bytecode.emitQword(0);
                     },
                     // TODO: add addressing
@@ -148,6 +162,38 @@ pub fn compile(self: *Compiler) !void {
             .kw_shl => try self.compileBinaryOp(.shl_reg_reg_reg, .shl_reg_reg_imm),
             .kw_shr => try self.compileBinaryOp(.shr_reg_reg_reg, .shr_reg_reg_imm),
             .kw_syscall => try self.bytecode.emitOpcode(.syscall),
+            .kw_cmp => {
+                const dst = try self.parseRegister();
+                try self.expectPeek(.comma);
+                switch (self.peek_token.kind) {
+                    .integer => {
+                        const src = try self.parseInteger();
+                        try self.bytecode.emitOpcode(.cmp_reg_imm);
+                        try self.bytecode.emitByte(dst);
+                        try self.bytecode.emitQword(src);
+                    },
+                    .register => {
+                        const src = try self.parseRegister();
+                        try self.bytecode.emitOpcode(.cmp_reg_reg);
+                        try self.bytecode.emitByte(dst);
+                        try self.bytecode.emitByte(src);
+                    },
+                    .ident => {
+                        try self.nextToken();
+                        try self.bytecode.emitOpcode(.cmp_reg_imm);
+                        try self.bytecode.emitByte(dst);
+                        try self.fixups.append(.{
+                            .addr = self.bytecode.len(),
+                            .label = self.curr_token.literal,
+                            .loc = self.curr_token.loc,
+                        });
+                        try self.bytecode.emitQword(0);
+                    },
+                    else => {
+                        try self.expectedError(&.{ .integer, .register, .ident }, self.peek_token.kind, self.peek_token.loc);
+                    },
+                }
+            },
             .kw_hlt => try self.bytecode.emitOpcode(.hlt),
             .kw_db => try self.compileData(.byte, u8),
             .kw_dw => try self.compileData(.word, u16),
@@ -162,17 +208,15 @@ pub fn compile(self: *Compiler) !void {
         try self.nextToken();
     }
 
-    var fixups_it = self.fixups.iterator();
-    while (fixups_it.next()) |fixup| {
-        if (self.labels.get(fixup.value_ptr.*)) |addr| {
+    for (self.fixups.items) |fixup| {
+        if (self.labels.get(fixup.label)) |addr| {
             var buf: [8]u8 = undefined;
             std.mem.writeInt(u64, &buf, @intCast(addr), .little);
             for (0..buf.len) |i| {
-                self.bytecode.buffer.items[fixup.key_ptr.* + i] = buf[i];
+                self.bytecode.buffer.items[fixup.addr + i] = buf[i];
             }
         } else {
-            // TODO: add the loc to the fixup
-            try self.diag.err("undefined label \"{s}\"", .{fixup.value_ptr.*}, null);
+            try self.diag.err("undefined label \"{s}\"", .{fixup.label}, fixup.loc);
             return error.UndefinedLabel;
         }
     }
@@ -242,7 +286,11 @@ fn compileBinaryOp(
             try self.bytecode.emitOpcode(reg_imm_op);
             try self.bytecode.emitByte(dst);
             try self.bytecode.emitByte(lhs);
-            try self.fixups.put(self.bytecode.len(), self.curr_token.literal);
+            try self.fixups.append(.{
+                .addr = self.bytecode.len(),
+                .label = self.curr_token.literal,
+                .loc = self.curr_token.loc,
+            });
             try self.bytecode.emitQword(0);
         },
         else => {
@@ -264,7 +312,11 @@ fn compileAddress(self: *Compiler) !void {
 
     switch (self.peek_token.kind) {
         .ident => {
-            try self.fixups.put(self.bytecode.len(), self.peek_token.literal);
+            try self.fixups.append(.{
+                .addr = self.bytecode.len(),
+                .label = self.peek_token.literal,
+                .loc = self.peek_token.loc,
+            });
             try self.bytecode.emitQword(0);
         },
         .integer => {

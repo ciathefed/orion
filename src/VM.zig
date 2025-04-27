@@ -11,8 +11,9 @@ const VM = @This();
 
 mem: []u8,
 regs: Registers,
+flags: struct { eq: bool, lt: bool } = .{ .eq = true, .lt = true },
 syscalls: std.ArrayList(SyscallFn),
-halted: bool,
+halted: bool = false,
 diag: Diag,
 allocator: std.mem.Allocator,
 
@@ -27,7 +28,6 @@ pub fn init(program: []u8, mem_size: usize, allocator: std.mem.Allocator) !VM {
         .mem = mem,
         .regs = regs,
         .syscalls = try getAllSyscalls(allocator),
-        .halted = false,
         .diag = .init(allocator),
         .allocator = allocator,
     };
@@ -159,6 +159,20 @@ pub fn step(self: *VM) !void {
         .shl_reg_reg_imm => try self.binaryOpImm(shl),
         .shr_reg_reg_reg => try self.binaryOpReg(shr),
         .shr_reg_reg_imm => try self.binaryOpImm(shr),
+        .cmp_reg_imm => {
+            self.advance(1);
+            const lhs = self.regs.get(try self.readRegister(), u64);
+            const rhs = try self.readQword();
+            self.flags.eq = lhs == rhs;
+            self.flags.lt = lhs < rhs;
+        },
+        .cmp_reg_reg => {
+            self.advance(1);
+            const lhs = self.regs.get(try self.readRegister(), u64);
+            const rhs = self.regs.get(try self.readRegister(), u64);
+            self.flags.eq = lhs == rhs;
+            self.flags.lt = lhs < rhs;
+        },
         .syscall => {
             self.advance(1);
             const index = self.regs.get(.x7, usize);
