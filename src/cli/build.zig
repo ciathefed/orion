@@ -36,15 +36,15 @@ pub fn run(
     T: type,
     main_options: T,
 ) !void {
-    const output = options.output orelse "app.ob";
-    var input: ?[]const u8 = null;
+    const output_path = options.output orelse "app.ob";
+    var input_path: ?[]const u8 = null;
 
     for (main_options.positionals) |arg| {
-        if (input != null) {
+        if (input_path != null) {
             std.log.err("unexpected positional argument: {s}\n", .{arg});
             return error.CommandError;
         }
-        input = arg;
+        input_path = arg;
     }
 
     if (main_options.options.help) {
@@ -55,9 +55,9 @@ pub fn run(
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    const source = try utils.readFile(input.?, arena.allocator());
+    const input = try utils.readFile(input_path.?, arena.allocator());
 
-    var lexer = Lexer.init(input.?, source, arena.allocator());
+    var lexer = Lexer.init(input_path.?, input, arena.allocator());
     var compiler = Compiler.init(&lexer, arena.allocator()) catch |err| switch (err) {
         error.LexerError => {
             try lexer.diag.printAllOrError(err);
@@ -73,7 +73,7 @@ pub fn run(
     const bytecode = try compiler.bytecode.toOwnedSlice();
 
     try std.fs.cwd().writeFile(.{
-        .sub_path = output,
+        .sub_path = output_path,
         .data = bytecode,
     });
 

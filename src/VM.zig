@@ -173,7 +173,6 @@ pub fn step(self: *VM) !void {
             self.flags.eq = lhs == rhs;
             self.flags.lt = lhs < rhs;
         },
-        // Add this to the switch statement in the step() function
         .jmp_imm => {
             self.advance(1);
             const target = try self.readQword();

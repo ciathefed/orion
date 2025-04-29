@@ -16,6 +16,8 @@ const Message = struct {
 pub const Location = struct {
     line: usize,
     col: usize,
+    start: usize = 0,
+    end: usize = 0,
     file: ?[]const u8 = null,
 
     pub fn format(

@@ -43,7 +43,6 @@ pub const keywords = std.StaticStringMap(Token.Kind).initComptime(.{
     .{ "ret", .kw_ret },
     .{ "syscall", .kw_syscall },
     .{ "hlt", .kw_hlt },
-
     .{ "db", .kw_db },
     .{ "dw", .kw_dw },
     .{ "dd", .kw_dd },
@@ -75,6 +74,8 @@ pub fn init(file_name: []const u8, input: []const u8, allocator: std.mem.Allocat
             .file = file_name,
             .line = 0,
             .col = 0,
+            .start = 0,
+            .end = 0,
         },
         .diag = .init(allocator),
         .allocator = allocator,
@@ -84,7 +85,6 @@ pub fn init(file_name: []const u8, input: []const u8, allocator: std.mem.Allocat
 }
 
 pub fn nextToken(self: *Lexer) !Token {
-    var token: Token = undefined;
     self.skipWhitespace();
 
     if (self.ch == ';') {
@@ -92,59 +92,77 @@ pub fn nextToken(self: *Lexer) !Token {
         return self.nextToken();
     }
 
-    const start = self.pos;
-    const loc = self.loc;
+    const start_offset = self.pos;
+    const start_line = self.loc.line;
+    const start_col = self.loc.col;
 
     switch (self.ch) {
-        ',' => token = self.newToken(.comma, self.input[start..self.read_pos], null),
-        ':' => token = self.newToken(.colon, self.input[start..self.read_pos], null),
-        '[' => token = self.newToken(.lbracket, self.input[start..self.read_pos], null),
-        ']' => token = self.newToken(.rbracket, self.input[start..self.read_pos], null),
-        '"' => token = try self.readString(),
-        0 => token = self.newToken(.eof, "", null),
+        ',' => {
+            self.readChar();
+            return self.newToken(.comma, self.input[start_offset..self.pos], start_offset, self.pos, start_line, start_col);
+        },
+        ':' => {
+            self.readChar();
+            return self.newToken(.colon, self.input[start_offset..self.pos], start_offset, self.pos, start_line, start_col);
+        },
+        '[' => {
+            self.readChar();
+            return self.newToken(.lbracket, self.input[start_offset..self.pos], start_offset, self.pos, start_line, start_col);
+        },
+        ']' => {
+            self.readChar();
+            return self.newToken(.rbracket, self.input[start_offset..self.pos], start_offset, self.pos, start_line, start_col);
+        },
+        '"' => return try self.readString(start_offset, start_line, start_col),
+        0 => return self.newToken(.eof, "", self.pos, self.pos, self.loc.line, self.loc.col),
         else => {
             if (ascii.isDigit(self.ch) or self.ch == '-') {
-                return self.readNumber();
+                return self.readNumber(start_offset, start_line, start_col);
             } else if (isIdent(self.ch)) {
                 while (isIdent(self.ch)) {
                     self.readChar();
                 }
 
-                const literal = self.input[start..self.pos];
-
+                const literal = self.input[start_offset..self.pos];
                 if (data_types.get(literal)) |kind| {
-                    return self.newToken(kind, literal, loc);
+                    return self.newToken(kind, literal, start_offset, self.pos, start_line, start_col);
                 } else if (keywords.get(literal)) |kind| {
-                    return self.newToken(kind, literal, loc);
+                    return self.newToken(kind, literal, start_offset, self.pos, start_line, start_col);
                 } else {
                     for (registers) |register| {
                         if (std.mem.eql(u8, literal, register)) {
-                            return self.newToken(.register, literal, loc);
+                            return self.newToken(.register, literal, start_offset, self.pos, start_line, start_col);
                         }
                     }
-                    return self.newToken(.ident, literal, loc);
+                    return self.newToken(.ident, literal, start_offset, self.pos, start_line, start_col);
                 }
             } else {
+                const loc = Diag.Location{
+                    .file = self.loc.file,
+                    .line = start_line,
+                    .col = start_col,
+                    .start = start_offset,
+                    .end = self.read_pos,
+                };
                 try self.diag.err("illegal token", .{}, loc);
                 return error.IllegalToken;
             }
         },
     }
-
-    self.readChar();
-    return token;
 }
 
-fn newToken(self: *Lexer, kind: Token.Kind, literal: []const u8, loc: ?Diag.Location) Token {
+fn newToken(self: *Lexer, kind: Token.Kind, literal: []const u8, start: usize, end: usize, line: usize, col: usize) Token {
     return .{
         .kind = kind,
         .literal = literal,
-        .loc = if (loc) |v| v else self.loc,
+        .loc = .{
+            .file = self.loc.file,
+            .line = line,
+            .col = col,
+            .start = start,
+            .end = end,
+        },
     };
-}
-
-fn peekChar(self: *Lexer) u8 {
-    return if (self.read_pos >= self.input.len) 0 else self.input[self.read_pos];
 }
 
 fn readChar(self: *Lexer) void {
@@ -168,27 +186,33 @@ fn readChar(self: *Lexer) void {
     }
 }
 
-fn readString(self: *Lexer) !Token {
-    const loc = self.loc;
+fn readString(self: *Lexer, start: usize, line: usize, col: usize) !Token {
     self.readChar();
+    const str_start = self.pos;
 
-    const start = self.pos;
     while (self.ch != '"' and self.ch != 0) {
         self.readChar();
     }
 
     if (self.ch != '"') {
+        const loc = Diag.Location{
+            .file = self.loc.file,
+            .line = line,
+            .col = col,
+            .start = start,
+            .end = self.pos,
+        };
         try self.diag.err("unterminated string", .{}, loc);
         return error.UnterminatedString;
     }
-    const end = self.pos;
 
-    return self.newToken(.string, self.input[start..end], loc);
+    const str_end = self.pos;
+    self.readChar();
+
+    return self.newToken(.string, self.input[str_start..str_end], start, self.pos, line, col);
 }
 
-fn readNumber(self: *Lexer) !Token {
-    const loc = self.loc;
-    const start = self.pos;
+fn readNumber(self: *Lexer, start: usize, line: usize, col: usize) !Token {
     var has_dot = false;
 
     while (ascii.isDigit(self.ch) or self.ch == '.' or self.ch == '-') {
@@ -200,7 +224,7 @@ fn readNumber(self: *Lexer) !Token {
     }
 
     const literal = self.input[start..self.pos];
-    return self.newToken(if (has_dot) .float else .integer, literal, loc);
+    return self.newToken(if (has_dot) .float else .integer, literal, start, self.pos, line, col);
 }
 
 fn skipWhitespace(self: *Lexer) void {

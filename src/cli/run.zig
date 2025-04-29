@@ -30,14 +30,14 @@ pub fn run(
     T: type,
     main_options: T,
 ) !void {
-    var input: ?[]const u8 = null;
+    var input_path: ?[]const u8 = null;
 
     for (main_options.positionals) |arg| {
-        if (input != null) {
+        if (input_path != null) {
             std.log.err("unexpected positional argument: {s}\n", .{arg});
             return error.CommandError;
         }
-        input = arg;
+        input_path = arg;
     }
 
     if (main_options.options.help) {
@@ -48,7 +48,7 @@ pub fn run(
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    const bytecode = try utils.readFile(input.?, arena.allocator());
+    const bytecode = try utils.readFile(input_path.?, arena.allocator());
 
     var vm = try VM.init(bytecode, options.@"memory-size", allocator);
     defer vm.deinit();
