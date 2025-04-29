@@ -56,8 +56,9 @@ pub fn run(
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    const raw_input = try utils.readFile(input_path.?, arena.allocator());
-    const input = try Preprocessor.preprocess(arena.allocator(), input_path.?, raw_input);
+    var pp = try Preprocessor.init(input_path.?, arena.allocator());
+    try pp.process();
+    const input = try pp.output();
 
     var lexer = Lexer.init(input_path.?, input, arena.allocator());
     var compiler = Compiler.init(&lexer, arena.allocator()) catch |err| switch (err) {

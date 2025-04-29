@@ -1,0 +1,13 @@
+strlen:
+    mov x1, 0
+strlen_loop:
+    ldr BYTE x3, [x0]
+    cmp x3, 0
+    jeq strlen_end
+
+    add x1, x1, 1
+    add x0, x0, 1
+    jmp strlen_loop
+strlen_end:
+    mov x0, x1
+    ret
