@@ -43,10 +43,14 @@ pub const keywords = std.StaticStringMap(Token.Kind).initComptime(.{
     .{ "ret", .kw_ret },
     .{ "syscall", .kw_syscall },
     .{ "hlt", .kw_hlt },
+
     .{ "db", .kw_db },
     .{ "dw", .kw_dw },
     .{ "dd", .kw_dd },
     .{ "dq", .kw_dq },
+
+    .{ "#define", .kw_define },
+    .{ "#include", .kw_include },
 });
 
 pub const registers = [_][]const u8{
@@ -118,7 +122,8 @@ pub fn nextToken(self: *Lexer) !Token {
         else => {
             if (ascii.isDigit(self.ch) or self.ch == '-') {
                 return self.readNumber(start_offset, start_line, start_col);
-            } else if (isIdent(self.ch)) {
+            } else if (isIdent(self.ch) or self.ch == '#') {
+                if (self.ch == '#') self.readChar();
                 while (isIdent(self.ch)) {
                     self.readChar();
                 }

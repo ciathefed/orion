@@ -1,6 +1,7 @@
 const std = @import("std");
 const args = @import("args");
 const Lexer = @import("../Lexer.zig");
+const Preprocessor = @import("../Preprocessor.zig");
 const Compiler = @import("../Compiler.zig");
 const VM = @import("../VM.zig");
 const utils = @import("../utils.zig");
@@ -55,7 +56,8 @@ pub fn run(
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    const input = try utils.readFile(input_path.?, arena.allocator());
+    const raw_input = try utils.readFile(input_path.?, arena.allocator());
+    const input = try Preprocessor.preprocess(arena.allocator(), input_path.?, raw_input);
 
     var lexer = Lexer.init(input_path.?, input, arena.allocator());
     var compiler = Compiler.init(&lexer, arena.allocator()) catch |err| switch (err) {

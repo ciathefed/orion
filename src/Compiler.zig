@@ -51,7 +51,7 @@ pub fn compile(self: *Compiler) !void {
                     try self.nextToken();
                     try self.labels.put(ident, self.bytecode.len());
                 } else {
-                    try self.diag.err("unexpected token \"{s}\"", .{self.peek_token.literal}, self.peek_token.loc);
+                    try self.diag.err("unexpected token \"{s}\"", .{self.lexer.input[self.peek_token.loc.start..self.peek_token.loc.end]}, self.peek_token.loc);
                     return error.UnexpectedToken;
                 }
             },

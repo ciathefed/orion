@@ -94,7 +94,7 @@ pub fn printAll(self: *Diag, writer: anytype) !void {
 pub fn printAllOrError(self: *Diag, e: anyerror) !void {
     var stderr = std.io.getStdErr();
     if (!self.hasError()) {
-        try stderr.writer().print("ERROR: unknown error: {s}\n", .{@errorName(e)});
+        try stderr.writer().print("error: unknown error: {s}\n", .{@errorName(e)});
     } else {
         try self.printAll(stderr.writer());
     }
