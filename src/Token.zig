@@ -52,6 +52,7 @@ pub const Kind = enum {
     kw_dw,
     kw_dd,
     kw_dq,
+    kw_resb,
 
     pub fn isDataType(self: Kind) bool {
         return switch (self) {

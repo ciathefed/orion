@@ -101,15 +101,15 @@ pub fn step(self: *VM) !void {
             switch (dt) {
                 .byte => {
                     const slice = self.mem[addr .. addr + @sizeOf(u8)];
-                    std.mem.writeInt(u8, @ptrCast(slice), @intCast(value), .little);
+                    std.mem.writeInt(u8, @ptrCast(slice), @truncate(value), .little);
                 },
                 .word => {
                     const slice = self.mem[addr .. addr + @sizeOf(u16)];
-                    std.mem.writeInt(u16, @ptrCast(slice), @intCast(value), .little);
+                    std.mem.writeInt(u16, @ptrCast(slice), @truncate(value), .little);
                 },
                 .dword => {
                     const slice = self.mem[addr .. addr + @sizeOf(u32)];
-                    std.mem.writeInt(u32, @ptrCast(slice), @intCast(value), .little);
+                    std.mem.writeInt(u32, @ptrCast(slice), @truncate(value), .little);
                 },
                 .qword => {
                     const slice = self.mem[addr .. addr + @sizeOf(u64)];

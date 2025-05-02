@@ -48,6 +48,7 @@ pub const keywords = std.StaticStringMap(Token.Kind).initComptime(.{
     .{ "dw", .kw_dw },
     .{ "dd", .kw_dd },
     .{ "dq", .kw_dq },
+    .{ "resb", .kw_resb },
 });
 
 pub const registers = [_][]const u8{
@@ -114,11 +115,12 @@ pub fn nextToken(self: *Lexer) !Token {
             self.readChar();
             return self.newToken(.rbracket, self.input[start_offset..self.pos], start_offset, self.pos, start_line, start_col);
         },
-        '"' => return try self.readString(start_offset, start_line, start_col),
+        '"' => return try self.readStringLiteral(start_offset, start_line, start_col),
+        '\'' => return try self.readCharLiteral(start_offset, start_line, start_col),
         0 => return self.newToken(.eof, "", self.pos, self.pos, self.loc.line, self.loc.col),
         else => {
             if (ascii.isDigit(self.ch) or self.ch == '-') {
-                return self.readNumber(start_offset, start_line, start_col);
+                return self.readNumberLiteral(start_offset, start_line, start_col);
             } else if (isIdent(self.ch) or self.ch == '#') {
                 if (self.ch == '#') self.readChar();
                 while (isIdent(self.ch)) {
@@ -188,7 +190,7 @@ fn readChar(self: *Lexer) void {
     }
 }
 
-fn readString(self: *Lexer, start: usize, line: usize, col: usize) !Token {
+fn readStringLiteral(self: *Lexer, start: usize, line: usize, col: usize) !Token {
     self.readChar();
     const str_start = self.pos;
 
@@ -214,7 +216,78 @@ fn readString(self: *Lexer, start: usize, line: usize, col: usize) !Token {
     return self.newToken(.string, self.input[str_start..str_end], start, self.pos, line, col);
 }
 
-fn readNumber(self: *Lexer, start: usize, line: usize, col: usize) !Token {
+fn readCharLiteral(self: *Lexer, start: usize, line: usize, col: usize) !Token {
+    self.readChar(); // consume the opening quote
+    // const char_start = self.pos;
+
+    var char_value: u8 = 0;
+
+    if (self.ch == '\\') {
+        // Handle escape sequences
+        self.readChar();
+        char_value = switch (self.ch) {
+            'n' => '\n',
+            'r' => '\r',
+            't' => '\t',
+            '\\' => '\\',
+            '\'' => '\'',
+            '"' => '"',
+            '0' => 0,
+            else => {
+                const loc = Diag.Location{
+                    .file = self.loc.file,
+                    .line = line,
+                    .col = col,
+                    .start = start,
+                    .end = self.pos,
+                };
+                try self.diag.err("invalid escape sequence", .{}, loc);
+                return error.InvalidEscapeSequence;
+            },
+        };
+        self.readChar();
+    } else {
+        // Regular character
+        if (self.ch == '\'' or self.ch == 0) {
+            const loc = Diag.Location{
+                .file = self.loc.file,
+                .line = line,
+                .col = col,
+                .start = start,
+                .end = self.pos,
+            };
+            try self.diag.err("empty character literal", .{}, loc);
+            return error.EmptyCharLiteral;
+        }
+        char_value = self.ch;
+        self.readChar();
+    }
+
+    // Expect closing quote
+    if (self.ch != '\'') {
+        const loc = Diag.Location{
+            .file = self.loc.file,
+            .line = line,
+            .col = col,
+            .start = start,
+            .end = self.pos,
+        };
+        try self.diag.err("unterminated character literal", .{}, loc);
+        return error.UnterminatedCharLiteral;
+    }
+    self.readChar(); // consume closing quote
+
+    // Convert the character to a string representation of its integer value
+    var buffer: [12]u8 = undefined; // enough for any u8 value as string
+    const int_str = try std.fmt.bufPrint(&buffer, "{}", .{char_value});
+
+    // We need to allocate since the token's literal needs to live beyond this function
+    const literal = try self.allocator.dupe(u8, int_str);
+
+    return self.newToken(.integer, literal, start, self.pos, line, col);
+}
+
+fn readNumberLiteral(self: *Lexer, start: usize, line: usize, col: usize) !Token {
     var has_dot = false;
 
     while (ascii.isDigit(self.ch) or self.ch == '.' or self.ch == '-') {

@@ -285,6 +285,12 @@ pub fn compile(self: *Compiler) !void {
             .kw_dw => try self.compileData(.word, u16),
             .kw_dd => try self.compileData(.dword, u32),
             .kw_dq => try self.compileData(.qword, u64),
+            .kw_resb => {
+                const n = try self.parseInteger();
+                for (0..@intCast(n)) |_| {
+                    try self.bytecode.emitByte(0);
+                }
+            },
             else => {
                 try self.diag.err("unhandled token \"{s}\"", .{self.curr_token.literal}, self.curr_token.loc);
                 return error.UnhandledToken;
@@ -575,7 +581,7 @@ fn escapeString(self: *Compiler, string: []const u8, loc: Diag.Location, allocat
                         return error.InvalidEscapeSequence;
                     }
 
-                    const val = (hexCharToInt(hi) << 4) | hexCharToInt(lo);
+                    const val = (utils.hexCharToInt(hi) << 4) | utils.hexCharToInt(lo);
                     break :blk val;
                 },
                 else => {
@@ -589,13 +595,4 @@ fn escapeString(self: *Compiler, string: []const u8, loc: Diag.Location, allocat
     }
 
     return builder.toOwnedSlice();
-}
-
-fn hexCharToInt(ch: u8) u8 {
-    return switch (ch) {
-        '0'...'9' => ch - '0',
-        'a'...'f' => ch - 'a' + 10,
-        'A'...'F' => ch - 'A' + 10,
-        else => unreachable,
-    };
 }
