@@ -1,0 +1,30 @@
+#include "std/syscalls.hasm"
+
+#define STDIN 0
+#define STDOUT 1
+#define STDERR 2
+
+exit:
+    mov x7, SYS_exit
+    syscall
+    ret
+
+read:
+    mov x7, SYS_read
+    syscall
+    ret
+
+write:
+    mov x7, SYS_write
+    syscall
+    ret
+
+open:
+    mov x7, SYS_open
+    syscall
+    ret
+
+close:
+    mov x7, SYS_close
+    syscall
+    ret
